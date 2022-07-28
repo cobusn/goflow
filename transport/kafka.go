@@ -2,7 +2,6 @@ package transport
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -86,12 +85,13 @@ func StartKafkaProducer(addrs []string, topic string, hashing bool, keying strin
 	kafkaConfig.Producer.Return.Successes = false
 	kafkaConfig.Producer.Return.Errors = logErrors
 	if useTls {
-		rootCAs, err := x509.SystemCertPool()
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Error initializing TLS: %v", err))
-		}
+		// rootCAs, err := x509.SystemCertPool()
+		// if err != nil {
+		// return nil, errors.New(fmt.Sprintf("Error initializing TLS: %v", err))
+		// }
 		kafkaConfig.Net.TLS.Enable = true
-		kafkaConfig.Net.TLS.Config = &tls.Config{RootCAs: rootCAs}
+		// kafkaConfig.Net.TLS.Config = &tls.Config{RootCAs: rootCAs}
+		kafkaConfig.Net.TLS.Config = &tls.Config{InsecureSkipVerify: true}
 	}
 
 	var keyingSplit []string
@@ -105,8 +105,16 @@ func StartKafkaProducer(addrs []string, topic string, hashing bool, keying strin
 			log.Warn("Using SASL without TLS will transmit the authentication in plaintext!")
 		}
 		kafkaConfig.Net.SASL.Enable = true
+		kafkaConfig.Net.SASL.Handshake = true
 		kafkaConfig.Net.SASL.User = os.Getenv("KAFKA_SASL_USER")
 		kafkaConfig.Net.SASL.Password = os.Getenv("KAFKA_SASL_PASS")
+		// begin added
+		kafkaConfig.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
+			return &XDGSCRAMClient{HashGeneratorFcn: SHA512}
+		}
+		kafkaConfig.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA512)
+		// done added
+
 		if kafkaConfig.Net.SASL.User == "" && kafkaConfig.Net.SASL.Password == "" {
 			return nil, errors.New("Kafka SASL config from environment was unsuccessful. KAFKA_SASL_USER and KAFKA_SASL_PASS need to be set.")
 		} else if log != nil {
